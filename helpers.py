@@ -11,14 +11,21 @@ def salvar_csv(df: pd.DataFrame,
                ) -> None:
     
     #Define o caminho
-    pasta = caminho if caminho else os.getcwd()
-    arquivo = os.path.join(pasta, f"{nome_arquivo}.csv")
+    try:
+        pasta = caminho if caminho else os.getcwd()
+        arquivo = os.path.join(pasta, f"{nome_arquivo}.csv")
+    except Exception as e:
+        print(f"Erro ao definir o caminho do arquivo {nome_arquivo}: {e}")
+        return
     #Salva o arquivo
-    print(f"Salvando arquivo: {nome_arquivo}")
-    inicio = time.perf_counter()
+    try:
+        print(f"Salvando arquivo: {nome_arquivo}")
+        inicio = time.perf_counter()
 
-    df.to_csv(arquivo, sep=separador, encoding=codificacao, decimal=",", index=False)
+        df.to_csv(arquivo, sep=separador, encoding=codificacao, decimal=",", index=False)
 
-    fim = time.perf_counter() 
-    arquivo = os.path.abspath(arquivo)
-    print(f"Arquivo salvo em {arquivo}\nArquivo {nome_arquivo} salvo em {fim - inicio:.2f} segundos.")
+        fim = time.perf_counter() 
+        arquivo = os.path.abspath(arquivo)
+        print(f"Arquivo salvo em {arquivo}\nArquivo {nome_arquivo} salvo em {fim - inicio:.2f} segundos.")
+    except Exception as e:
+        print(f"Erro ao salvar o arquivo {nome_arquivo}: {e}")
