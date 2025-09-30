@@ -2,6 +2,7 @@ import os
 import time
 import pandas as pd
 
+print("Olá, mundo!")
 
 def salvar_csv(df: pd.DataFrame, 
                nome_arquivo: str, 
