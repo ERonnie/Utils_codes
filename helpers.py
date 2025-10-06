@@ -2,9 +2,6 @@ import os
 import time
 import pandas as pd
 
-print("Salve")
-print("Salve2.0")
-
 def salvar_csv(df: pd.DataFrame, 
                nome_arquivo: str, 
                caminho: str | None = None,
@@ -66,6 +63,7 @@ def carregar_arquivo(caminho: str, **kwargs) -> pd.DataFrame:
             raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
     
     fim = time.time()
+    df.columns = df.columns.str.strip()
 
     print(f"Arquivo {os.path.basename(caminho)} carregado em {fim - inicio:.2f} segundos.")
     return df
