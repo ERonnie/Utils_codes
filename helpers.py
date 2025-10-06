@@ -3,6 +3,7 @@ import time
 import pandas as pd
 
 print("Salve")
+print("Salve2.0")
 
 def salvar_csv(df: pd.DataFrame, 
                nome_arquivo: str, 
