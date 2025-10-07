@@ -2,32 +2,53 @@ import os
 import time
 import pandas as pd
 
-def salvar_csv(df: pd.DataFrame, 
-               nome_arquivo: str, 
-               caminho: str | None = None,
-               separador: str = ";", 
-               codificacao: str = "utf-8"
-               ) -> None:
-    
+def salvar_arquivo(df: pd.DataFrame, 
+                   nome_arquivo: str, 
+                   caminho: str | None = None,
+                   extensao: str = "csv",
+                   **kwargs
+                   ) -> None:
+    #Parametros padrões
+    DEFAULTS = {"csv":{"sep": ";", "decimal": ",", "encoding": "utf-8", "index": False},
+                "excel":{"sheet_name": "BD_Python", "index": False}
+                }
+    #Evita quebra por esse de digitação
+    extensao = extensao.lower().strip()
     #Define o caminho
     try:
         pasta = caminho if caminho else os.getcwd()
-        arquivo = os.path.join(pasta, f"{nome_arquivo}.csv")
     except Exception as e:
         print(f"Erro ao definir o caminho do arquivo {nome_arquivo}: {e}")
         return
-    #Salva o arquivo
-    try:
-        print(f"Salvando arquivo: {nome_arquivo}")
-        inicio = time.perf_counter()
+    #Salva o arquivo na extensão escolhida pelo usuário
+    match extensao:
+        case "csv":
+            arquivo = os.path.join(pasta, f"{nome_arquivo}.csv")
+            params = {**DEFAULTS["csv"], **kwargs}
+            try:
+                print(f"Salvando arquivo: {nome_arquivo}")
+                inicio = time.perf_counter()
+                df.to_csv(arquivo, **params)
+                fim = time.perf_counter() 
+                arquivo = os.path.abspath(arquivo)
+                print(f"Arquivo salvo em {arquivo}\nArquivo {nome_arquivo} salvo em {fim - inicio:.2f} segundos.")
+            except Exception as e:
+                print(f"Erro ao salvar o arquivo {nome_arquivo}: {e}")
+        case "excel":
+            arquivo = os.path.join(pasta, f"{nome_arquivo}.xlsx")
+            params = {**DEFAULTS["excel"], **kwargs}
+            try:
+                print(f"Salvando arquivo: {nome_arquivo}")
+                inicio = time.perf_counter()
+                df.to_excel(arquivo, **params)
+                fim = time.perf_counter() 
+                arquivo = os.path.abspath(arquivo)
+                print(f"Arquivo salvo em {arquivo}\nArquivo {nome_arquivo} salvo em {fim - inicio:.2f} segundos.")
+            except Exception as e:
+                print(f"Erro ao salvar o arquivo {nome_arquivo}: {e}")
+        case _:
+            raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
 
-        df.to_csv(arquivo, sep=separador, encoding=codificacao, decimal=",", index=False)
-
-        fim = time.perf_counter() 
-        arquivo = os.path.abspath(arquivo)
-        print(f"Arquivo salvo em {arquivo}\nArquivo {nome_arquivo} salvo em {fim - inicio:.2f} segundos.")
-    except Exception as e:
-        print(f"Erro ao salvar o arquivo {nome_arquivo}: {e}")
 
 def carregar_arquivo(caminho: str, **kwargs) -> pd.DataFrame:
     print("Iniciando o carregamento do arquivo")
