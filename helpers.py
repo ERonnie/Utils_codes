@@ -1,6 +1,8 @@
 import os
 import time
+import warnings
 import pandas as pd
+warnings.filterwarnings("ignore")
 
 def salvar_arquivo(df: pd.DataFrame, 
                    nome_arquivo: str, 
@@ -88,3 +90,32 @@ def carregar_arquivo(caminho: str, **kwargs) -> pd.DataFrame:
 
     print(f"Arquivo {os.path.basename(caminho)} carregado em {fim - inicio:.2f} segundos.")
     return df
+
+def ajustar_data(df: pd.DataFrame, coluna: str, reportar_erros: bool = True) -> pd.DataFrame:
+    
+    if coluna not in df.columns:
+        raise KeyError(f"A coluna '{coluna}' não existe no DataFrame.")
+    
+    df_ajustado = df
+    serie = df[coluna]
+
+    # Se já for datetime, só formata
+    if pd.api.types.is_datetime64_any_dtype(serie):
+        df_ajustado[coluna] = serie.dt.strftime("%Y-%m-%d")
+        return df_ajustado
+    # Caso for string
+    df_ajustado[coluna] = df[coluna].astype(str).str.strip()
+    mask_ano_mes = df_ajustado[coluna].str.match(r"^\d{4}[-/]\d{2}$", na=False)
+    df_ajustado.loc[mask_ano_mes, coluna] = df.loc[mask_ano_mes, coluna] + "-01"
+    # df_ajustado[coluna] = pd.to_datetime(serie, errors='coerce', dayfirst=False)
+
+    convertida = pd.to_datetime(serie, errors="coerce", dayfirst=False)
+    invalidos = serie[convertida.isna() & serie.notna()]
+
+    df_ajustado[coluna] = convertida
+
+    if reportar_erros and not invalidos.empty:
+        print(f"⚠️ Total de {len(invalidos)} valores inválidos encontrados na coluna '{coluna}':")
+        print(invalidos.to_list())
+
+    return df_ajustado
