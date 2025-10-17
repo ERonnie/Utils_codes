@@ -119,3 +119,15 @@ def ajustar_data(df: pd.DataFrame, coluna: str, reportar_erros: bool = True) -> 
         print(invalidos.to_list())
 
     return df_ajustado
+
+def ajustar_colunas(
+        df: pd.DataFrame,
+        ajustar_para: str = "Maisculas"
+):
+    columns_strings = df.select_dtypes(include=["object"]).columns
+    for col in columns_strings:
+        if ajustar_para == "Maisculas":
+            df[col]= df[col].str.upper()
+        elif ajustar_para == "Minusculas":
+            df[col] = df[col].str.lower()
+    return df
