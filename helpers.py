@@ -2,6 +2,7 @@ import os
 import time
 import warnings
 import pandas as pd
+import polars as pl
 warnings.filterwarnings("ignore")
 
 def salvar_arquivo(df: pd.DataFrame, 
@@ -11,7 +12,7 @@ def salvar_arquivo(df: pd.DataFrame,
                    **kwargs
                    ) -> None:
     #Parametros padrões
-    DEFAULTS = {"csv":{"sep": ";", "decimal": ",", "encoding": "utf-8", "index": False},
+    DEFAULTS_PANDAS = {"csv":{"sep": ";", "decimal": ",", "encoding": "utf-8", "index": False},
                 "excel":{"sheet_name": "BD_Python", "index": False}
                 }
     #Evita quebra por esse de digitação
@@ -52,44 +53,81 @@ def salvar_arquivo(df: pd.DataFrame,
             raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
 
 
-def carregar_arquivo(caminho: str, **kwargs) -> pd.DataFrame:
+def carregar_arquivo(caminho: str, engine: str = "pandas", **kwargs) -> pd.DataFrame:
     print("Iniciando o carregamento do arquivo")
     extensao = os.path.splitext(caminho)[1].lower()
     # parâmetros padrão
-    defaults = {"csv": {"sep": ";", "decimal": ",", "encoding": "utf-8"},
-                "excel": {"engine": None, "decimal": ",", "thousands": "."},
-                "xlsb": {"engine": "pyxlsb", "decimal": ",", "thousands": "."}
-                }
-    
-    inicio = time.time()
+    if engine.lower() == "pandas":
+        DEFAULTS_PANDAS = {
+            "csv": {"sep": ";", "decimal": ",", "encoding": "utf-8"},
+            "excel": {"engine": None, "decimal": ",", "thousands": "."},
+            "xlsb": {"engine": "pyxlsb", "decimal": ",", "thousands": "."}
+        }
+        print("Usando Pandas como engine de leitura.")
+        inicio = time.time()
 
-    match extensao:
-        case ".csv":
-            print("Extensão .csv detectada.")
-            params = {**defaults["csv"], **kwargs}
-            try:
-                print("Lendo o arquivo csv em UTF-8")
-                df = pd.read_csv(caminho, **params)
-            except UnicodeDecodeError:
-                print("Não foi possível ler em UTF-8, tentando latin1")
-                params["encoding"] = "latin1"
-                df = pd.read_csv(caminho, **params) 
-        case ".xlsx" | ".xls" | ".xlsm":
-            print("Extensão excel detectada.")
-            params = {**defaults["excel"], **kwargs}
-            df = pd.read_excel(caminho, **params)
-        case ".xlsb":
-            print("Extensâo .xlsb detectada.")
-            params = {**defaults["xlsb"], **kwargs}
-            df = pd.read_excel(caminho, **params)
-        case _:
-            raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
-    
-    fim = time.time()
-    df.columns = df.columns.str.strip()
+        match extensao:
+            case ".csv":
+                print("Extensão .csv detectada.")
+                params = {**DEFAULTS_PANDAS["csv"], **kwargs}
+                try:
+                    print("Lendo o arquivo csv em UTF-8")
+                    df = pd.read_csv(caminho, **params)
+                except UnicodeDecodeError:
+                    print("Não foi possível ler em UTF-8, tentando latin1")
+                    params["encoding"] = "latin1"
+                    df = pd.read_csv(caminho, **params) 
+            case ".xlsx" | ".xls" | ".xlsm":
+                print("Extensão excel detectada.")
+                params = {**DEFAULTS_PANDAS["excel"], **kwargs}
+                df = pd.read_excel(caminho, **params)
+            case ".xlsb":
+                print("Extensâo .xlsb detectada.")
+                params = {**DEFAULTS_PANDAS["xlsb"], **kwargs}
+                df = pd.read_excel(caminho, **params)
+            case _:
+                raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
+        
+        fim = time.time()
+        df.columns = df.columns.str.strip()
 
-    print(f"Arquivo {os.path.basename(caminho)} carregado em {fim - inicio:.2f} segundos.")
-    return df
+        print(f"Arquivo {os.path.basename(caminho)} carregado em {fim - inicio:.2f} segundos.")
+        return df
+    else:
+        DEFAULTS_POLARS = {
+            "csv": {"separator": ";", "decimal_comma": True, "encoding": "utf-8"},
+            "excel": {"read_options": {"header_row": 0}},
+        }
+        print("Usando Polars como engine de leitura.")
+        inicio = time.time()
+
+        match extensao:
+            case ".csv":
+                print("Extensão .csv detectada.")
+                params = {**DEFAULTS_POLARS["csv"], **kwargs}
+                try:
+                    print("Lendo o arquivo csv em UTF-8")
+                    df = pl.read_csv(caminho, **params)
+                    df = df.to_pandas()
+                except UnicodeDecodeError:
+                    print("Não foi possível ler em UTF-8, tentando latin1")
+                    params["encoding"] = "latin1"
+                    df = pl.read_csv(caminho, **params) 
+                    df = df.to_pandas()
+            case ".xlsx" | ".xls" | ".xlsm" | ".xlsb":
+                print("Extensão excel detectada.")
+                params = {**DEFAULTS_POLARS["excel"], **kwargs}
+                df = pl.read_excel(caminho, **params)
+                df = df.to_pandas()
+            case _:
+                raise ValueError(f"Extensão de arquivo '{extensao}' não suportada.")
+        
+        fim = time.time()
+        df.columns = df.columns.str.strip()
+
+        print(f"Arquivo {os.path.basename(caminho)} carregado em {fim - inicio:.2f} segundos.")
+        return df
+
 
 def ajustar_data(df: pd.DataFrame, coluna: str, reportar_erros: bool = True) -> pd.DataFrame:
     
