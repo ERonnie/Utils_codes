@@ -160,12 +160,13 @@ def ajustar_data(df: pd.DataFrame, coluna: str, reportar_erros: bool = True) -> 
 
 def ajustar_colunas(
         df: pd.DataFrame,
-        ajustar_para: str = "Maisculas"
+        ajustar_para: str = "maisculas"
 ):
+    ajustar_para = ajustar_para.lower().strip()
     columns_strings = df.select_dtypes(include=["object"]).columns
     for col in columns_strings:
-        if ajustar_para == "Maisculas":
+        if ajustar_para == "maisculas":
             df[col]= df[col].str.upper()
-        elif ajustar_para == "Minusculas":
+        elif ajustar_para == "minusculas":
             df[col] = df[col].str.lower()
     return df
