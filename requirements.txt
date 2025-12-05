@@ -1,0 +1,3 @@
+pandas==2.3.3
+polars==1.34.0
+psutil==7.0.0
