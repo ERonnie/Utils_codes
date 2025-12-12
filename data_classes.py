@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import os
 
 class DesdobradorProporcional:
@@ -47,9 +48,7 @@ class DesdobradorProporcional:
         coluna_valor = self.coluna_valor
         chaves_origem = self.chaves_origem
 
-        # -------------------------------------------
-        # 1) Identificar origem sem destino correspondente
-        # -------------------------------------------
+        # Identificar origem sem destino correspondente
         df_origem_check = df_origem.merge(
             df_destino[chaves_comuns].drop_duplicates(),
             on=chaves_comuns,
@@ -68,7 +67,7 @@ class DesdobradorProporcional:
         )
 
         soma_erro = self.df_erro[coluna_valor].sum()
-        print(f"**Relatório de Desdobramento:**")
+        print(f"\n**Relatório de Desdobramento:**")
         print(f"Soma total de Origem: {self.soma_origem_total:,.2f}")
         print(f"Valor não distribuído (Erros): {soma_erro:,.2f}")
 
@@ -77,18 +76,14 @@ class DesdobradorProporcional:
             self.df_ok = pd.DataFrame()
             return self.df_ok, self.df_erro
 
-        # -------------------------------------------
-        # 2) Filtrar destino pelas chaves válidas
-        # -------------------------------------------
+        # Filtrar destino pelas chaves válidas
         df_destino_ok = df_destino.merge(
             df_origem_valida[chaves_comuns].drop_duplicates(),
             on=chaves_comuns,
             how="inner"
         )
 
-        # -------------------------------------------
-        # 3) Agrupar e criar pesos
-        # -------------------------------------------
+        # Agrupar e criar pesos
         destino_agrupado = (
             df_destino_ok
             .groupby(chaves_comuns)[coluna_valor]
@@ -172,3 +167,184 @@ class DesdobradorProporcional:
 
         print(f"Salvo OK: {caminho_ok}")
         print(f"Salvo ERRO: {caminho_erro}")
+
+class DataFrameDiagnostics:
+    """
+    Classe utilitária para diagnosticar problemas em DataFrames,
+    especialmente focada em problemas de merge e tipagem.
+    """
+    def __init__(self):
+        pass
+
+    def prints_uteis(self, df: pd.DataFrame, nome: str ="DataFrame"):
+        """
+        Exibe uma visão geral técnica do DataFrame: Tipos, Nulos e Estatísticas.
+
+        Args:
+            df (pd.DataFrame):
+                Dataframe a ser diagnosticado.
+            nome (str):
+                Nome para diferenciar nos prints, caso esteja vendo mais de um
+                DataFrame.
+        """
+        print(f"\n{'=' * 60}")
+        print(f"🔎 PRINTS UTEIS: {nome}")
+        print(f"{'=' * 60}")
+
+        print(f"Formato (Linhas, Colunas): {df.shape}")
+
+        # Tipagem e Nulos
+        print("\n--- 1. Tipagem e Nulos (Amostra) ---")
+        info_df = pd.DataFrame({
+            'Dtype': df.dtypes,
+            'Nulos': df.isnull().sum(),
+            '% Nulos': (df.isnull().sum() / len(df)) * 100,
+            'Exemplo Unico': [
+                df[c].dropna().unique()[0] if not df[c].dropna().empty else np.nan
+                for c in df.columns
+            ]
+        })
+        print(info_df)
+
+        # Estatísticas básicas (apenas numéricas)
+        print("\n--- 2. Describe (Numérico) ---")
+        try:
+            print(df.describe())
+        except Exception:
+            print("Não há colunas numéricas para descrever.")
+
+        print(f"\n{'=' * 60}\n")
+
+    def diagnosticar_merge(
+        self,
+        df_esq: pd.DataFrame,
+        df_dir: pd.DataFrame,
+        chave_esq: list,
+        chave_dir: list | None = None,
+        nome_esq: str = "Esq",
+        nome_dir: str = "Dir"
+    ):
+        """
+        Analisa possíveis razões de falha em um merge entre dois DataFrames.
+        Verifica: Tipos, espaços em branco, case e interseção de chaves.
+        Mostra: Todos os dados que não batem nas colunas
+
+        Args:
+            df_esq (pd.DataFrame):
+                DataFrame a "esquerda" no merge
+            df_dir (pd.DataFrame):
+                DataFrame a "direita" no merge
+            chave_esq (list):
+                Lista com colunas que serão a chave no merge, caso
+                as colunas tenha nomes diferentes essa lista se refere
+                ao DataFrame a esquerda.
+            chave_dir (list):
+                Lista com colunas que serão a chave no merge, caso
+                as colunas tenha nomes diferentes essa lista se refere
+                ao DataFrame a direita.
+            nome_esq (str):
+                Nome para identificação nos prints
+            nome_dir (str):
+                Nome para identificação nos prints
+        """
+        if chave_dir is None:
+            chave_dir = chave_esq
+
+        print(f"\n{'=' * 60}")
+        print(f"DIAGNÓSTICO DE MERGE: {nome_esq} vs {nome_dir}")
+        print(f"Chaves: '{chave_esq}' (Esq) vs '{chave_dir}' (Dir)")
+        print(f"{'=' * 60}")
+
+        # Checagem de Tipagem
+        # Converter para lista se for string
+        chaves_esq = [chave_esq] if isinstance(chave_esq, str) else chave_esq
+        chaves_dir = [chave_dir] if isinstance(chave_dir, str) else chave_dir
+
+        print("\n1. Comparação de Tipos:")
+        tipos_match = True
+        for col_esq, col_dir in zip(chaves_esq, chaves_dir):
+            type_esq = df_esq[col_esq].dtype
+            type_dir = df_dir[col_dir].dtype
+            match_str = "✅" if type_esq == type_dir else "⚠️"
+            print(f"   {match_str} {col_esq:20} ({type_esq}) vs {col_dir:20} ({type_dir})")
+            if type_esq != type_dir:
+                tipos_match = False
+                if 'int' in str(type_esq) and 'obj' in str(type_dir):
+                    print(f"      -> Dica: '{col_dir}' é texto e '{col_esq}' é inteiro.")
+
+        if tipos_match:
+            print("   ✅ Todos os tipos coincidem.")
+        else:
+            print("   ⚠️ ALERTA: Há diferenças de tipo. O merge pode falhar.")
+
+        # Análise de Conteúdo (Amostra)
+        # Para múltiplas colunas, vamos fazer análise por coluna
+        print("\n2. Análise de Valores Únicos:")
+        total_match = 0
+        
+        for col_esq, col_dir in zip(chaves_esq, chaves_dir):
+            set_esq = set(df_esq[col_esq].dropna().unique())
+            set_dir = set(df_dir[col_dir].dropna().unique())
+            interseccao = set_esq.intersection(set_dir)
+            
+            qtd_esq = len(set_esq)
+            qtd_dir = len(set_dir)
+            qtd_match = len(interseccao)
+            total_match += qtd_match
+            
+            print(f"\n   Coluna '{col_esq}' vs '{col_dir}':")
+            print(f"    - Únicos em {nome_esq}: {qtd_esq}")
+            print(f"    - Únicos em {nome_dir}: {qtd_dir}")
+            print(f"    - 🔗 Chaves em Comum: {qtd_match}")
+            
+            if qtd_match == 0:
+                print(f"    ❌ CRÍTICO: Nenhuma chave corresponde em '{col_esq}'!")
+            elif qtd_match < min(qtd_esq, qtd_dir) * 0.1:
+                print(f"    ⚠️ ALERTA: Menos de 10% das chaves correspondem em '{col_esq}'.")
+
+        # Detetive de Espaços (Whitespace)
+        print("\n3. Investigação de Strings (Possível erro de espaço):")
+        for col_esq, col_dir in zip(chaves_esq, chaves_dir):
+            if df_esq[col_esq].dtype == 'O' or df_dir[col_dir].dtype == 'O':
+                sample_esq = str(df_esq[col_esq].dropna().iloc[0]) if len(df_esq[col_esq].dropna()) > 0 else ""
+                sample_dir = str(df_dir[col_dir].dropna().iloc[0]) if len(df_dir[col_dir].dropna()) > 0 else ""
+                
+                has_space = (len(sample_esq.strip()) != len(sample_esq) or 
+                            len(sample_dir.strip()) != len(sample_dir))
+                
+                if has_space:
+                    print(f"   ⚠️ '{col_esq}': '{sample_esq}' (len={len(sample_esq)}) - Detectado espaço!")
+                    print(f"   ⚠️ '{col_dir}': '{sample_dir}' (len={len(sample_dir)}) - Detectado espaço!")
+                else:
+                    print(f"   ✅ '{col_esq}' e '{col_dir}': Sem espaços detectados.")
+
+        # Identificar os Vilões (valores que não fazem match)
+        print("\n4. 🔍 Valores que NÃO vão fazer match (Os Vilões):")
+        for col_esq, col_dir in zip(chaves_esq, chaves_dir):
+            set_esq = set(df_esq[col_esq].dropna().unique())
+            set_dir = set(df_dir[col_dir].dropna().unique())
+            
+            viloes_esq = set_esq - set_dir  # Estão em esq mas não em dir
+            viloes_dir = set_dir - set_esq  # Estão em dir mas não em esq
+            
+            print(f"\n   📍 Coluna '{col_esq}':")
+            
+            if viloes_esq:
+                print(f"      ❌ Em {nome_esq} mas NÃO em {nome_dir} ({len(viloes_esq)} valores):")
+                # Mostra todos os casos
+                for valor in list(viloes_esq)[:]: # <- Caso queira que apareça menos inserir valor a direita 
+                    qtd_ocorr = len(df_esq[df_esq[col_esq] == valor])
+                    print(f"         - {valor} ({qtd_ocorr}x)")
+            else:
+                print(f"      ✅ Todos os valores de {nome_esq} existem em {nome_dir}")
+            
+            if viloes_dir:
+                print(f"      ❌ Em {nome_dir} mas NÃO em {nome_esq} ({len(viloes_dir)} valores):")
+                # Mostra todos os casos
+                for valor in list(viloes_dir)[:]: # <- Caso queira que apareça menos inserir valor a direita
+                    qtd_ocorr = len(df_dir[df_dir[col_dir] == valor])
+                    print(f"         - {valor} ({qtd_ocorr}x)")
+            else:
+                print(f"      ✅ Todos os valores de {nome_dir} existem em {nome_esq}")
+
+        print(f"{'=' * 60}\n")

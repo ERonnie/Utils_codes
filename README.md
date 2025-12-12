@@ -108,3 +108,34 @@ from Utils_codes import ajustar_colunas
 # Converte todas as strings do DF para MAIÚSCULAS
 df_upper = ajustar_colunas(df, ajustar_para="maisculas")
 ```
+
+## 🛠️ Classes Disponiveis
+
+1. ``DesdobradorProporcional``\
+Classe aumenta o nivel de detalhe de um DataFrame para o mesmo nivel de outro DataFrame
+
+### Exemplo de Uso
+
+```Python
+from Utils_codes import DesdobradorProporcional as DesdProp
+
+# Determinando contantes
+DETALHE_MENOR = ['UF', 'SKU', 'COD_FILIAL']
+DETALHE_MAIOR = ['UF', 'SKU', 'COD_FILIAL',
+                 'ORIGEM', 'FATURAMENTO', 'DESTINO']
+COLUNA_DESDOBRAR = "Volume_orig"
+
+# Instacia recebe valores a serem abertos
+desdobrador = DesdProp(
+    df_detalhe_menor,
+    df_detalhe_maior,
+    DETALHE_MENOR,
+    DETALHE_MAIOR,
+    COLUNA_DESDOBRAR
+    )
+
+# Metodo que executa o aumento de detalhe
+desdobrador.desdobrar()
+# Metodo salva em uma pasta ou diretorio
+desdobrador.salvar_resultados("Arquivos_finais", "xlsx")
+```
