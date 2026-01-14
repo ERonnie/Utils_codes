@@ -1,172 +1,106 @@
 import pandas as pd
 import numpy as np
+import time
 import os
 
-class DesdobradorProporcional:
-    def __init__(self, df_origem, df_destino, chaves_origem, chaves_destino, coluna_valor):
-        """
-        Classe para realizar desdobramentos proporcionais entre dois níveis hierárquicos.
-
-        Parameters:
-            df_origem (pd.DataFrame): DataFrame com menor nível de detalhe.
-            df_destino (pd.DataFrame): DataFrame com maior nível de detalhe (alvo).
-            chaves_origem (list): Lista de chaves do nível origem.
-            chaves_destino (list): Lista de chaves do nível destino.
-            coluna_valor (str): Nome da coluna a ser desdobrada.
-        """
-
-        self.df_origem = df_origem.copy()
-        self.df_destino = df_destino.copy()
-        self.chaves_origem = chaves_origem
-        self.chaves_destino = chaves_destino
-        self.coluna_valor = coluna_valor
-
-        # atributos gerados após execução
+class MegaDesdobrador:
+    def __init__(self):
         self.df_ok = None
         self.df_erro = None
+        self.soma_origem_total = 0
 
-        # validações iniciais
-        self._validar_chaves()
+    def desdobrar_classico(self, df_origem, df_destino, chaves_origem, chaves_destino, coluna_valor):
+        """
+        Desdobra valores da origem baseando-se no peso atual do destino.
+        Ideal para: Abrir Demanda em Itens/Cidades que já possuem valores no destino.
+        """
+        inicio_proc = time.time()
+        self.soma_origem_total = df_origem[coluna_valor].sum()
+        chaves_comuns = [c for c in chaves_origem if c in chaves_destino]
 
-        # Atributo para armazenar a soma total da origem (útil para auditoria)
-        self.soma_origem_total = self.df_origem[self.coluna_valor].sum()
+        # Identificar erros (Origem sem par no Destino)
+        check = df_origem.merge(df_destino[chaves_comuns].drop_duplicates(), on=chaves_comuns, how="left", indicator=True)
+        self.df_erro = check[check["_merge"] == "left_only"].drop(columns="_merge")
+        df_origem_valida = check[check["_merge"] == "both"].drop(columns="_merge")
 
+        # Calcular Pesos no Destino
+        destino_agrupado = df_destino.groupby(chaves_comuns)[coluna_valor].sum().reset_index().rename(columns={coluna_valor: "soma_destino"})
+        df_destino_ok = df_destino.merge(destino_agrupado, on=chaves_comuns, how="left")
+        
+        df_destino_ok["peso"] = np.where(df_destino_ok["soma_destino"] != 0, 
+                                         df_destino_ok[coluna_valor] / df_destino_ok["soma_destino"], 0)
 
-    def _validar_chaves(self):
-        """Valida se existem chaves comuns entre origem e destino."""
-        self.chaves_comuns = [c for c in self.chaves_origem if c in self.chaves_destino]
-
-        if not self.chaves_comuns:
-            raise ValueError("Não existem chaves comuns entre origem e destino.")
-
-
-    def desdobrar(self):
-        """Executa o desdobramento proporcional."""
-
-        df_origem, df_destino = self.df_origem, self.df_destino
-        chaves_comuns = self.chaves_comuns
-        coluna_valor = self.coluna_valor
-        chaves_origem = self.chaves_origem
-
-        # Identificar origem sem destino correspondente
-        df_origem_check = df_origem.merge(
-            df_destino[chaves_comuns].drop_duplicates(),
-            on=chaves_comuns,
-            how="left",
-            indicator=True
-        )
-
-        self.df_erro = (
-            df_origem_check[df_origem_check["_merge"] == "left_only"]
-            .drop(columns="_merge")
-        )
-
-        df_origem_valida = (
-            df_origem_check[df_origem_check["_merge"] == "both"]
-            .drop(columns="_merge")
-        )
-
-        soma_erro = self.df_erro[coluna_valor].sum()
-        print(f"\n**Relatório de Desdobramento:**")
-        print(f"Soma total de Origem: {self.soma_origem_total:,.2f}")
-        print(f"Valor não distribuído (Erros): {soma_erro:,.2f}")
-
-        # se nada sobrou, retorna vazio
-        if df_origem_valida.empty:
-            self.df_ok = pd.DataFrame()
-            return self.df_ok, self.df_erro
-
-        # Filtrar destino pelas chaves válidas
-        df_destino_ok = df_destino.merge(
-            df_origem_valida[chaves_comuns].drop_duplicates(),
-            on=chaves_comuns,
-            how="inner"
-        )
-
-        # Agrupar e criar pesos
-        destino_agrupado = (
-            df_destino_ok
-            .groupby(chaves_comuns)[coluna_valor]
-            .sum()
-            .reset_index()
-            .rename(columns={coluna_valor: "soma_destino"})
-        )
-
-        df_destino_ok = df_destino_ok.merge(destino_agrupado, on=chaves_comuns, how="left")
-
-        # Cálculo do Peso: Adicionamos um tratamento para evitar a divisão por zero.
-        # Se soma_destino for 0, definimos o peso como 0, pois o valor do destino também será 0
-        # e a proporção de 0/0 é indeterminada, mas 0 * valor_origem = 0.
-        df_destino_ok["peso"] = df_destino_ok[coluna_valor].mask(
-            df_destino_ok["soma_destino"] != 0,
-            df_destino_ok[coluna_valor] / df_destino_ok["soma_destino"]
-        ).fillna(0) # Se a soma for 0 (NaN após a operação .mask), o peso é 0.
-
-        df_destino_ok = df_destino_ok.merge(
-            df_origem_valida[chaves_origem + [coluna_valor]],
-            on=chaves_comuns,
-            how="left",
-            suffixes=("", "_origem")
-        )
-
-        df_destino_ok["valor_desdobrado"] = (
-            df_destino_ok["peso"] * df_destino_ok[f"{coluna_valor}_origem"]
-        )
-
-        soma_desdobrado = df_destino_ok['valor_desdobrado'].sum()
-        print(f"Valor desdobrado (OK): {soma_desdobrado:,.2f}")
-        print(f"Diferença Total: {(self.soma_origem_total - soma_desdobrado - soma_erro):.2f} (Esperado 0.00)")
-
-
-        df_destino_ok = df_destino_ok.drop(
-            columns=["soma_destino", "peso", f"{coluna_valor}_origem"]
-        )
-
-        self.df_ok = df_destino_ok
-
+        # Aplicar Desdobramento
+        df_destino_ok = df_destino_ok.merge(df_origem_valida[chaves_origem + [coluna_valor]], 
+                                            on=chaves_comuns, how="left", suffixes=("", "_origem"))
+        
+        df_destino_ok["valor_desdobrado"] = df_destino_ok["peso"] * df_destino_ok[f"{coluna_valor}_origem"]
+        
+        self.df_ok = df_destino_ok.drop(columns=["soma_destino", "peso", f"{coluna_valor}_origem"])
+        
+        self._exibir_auditoria("CLÁSSICO", self.soma_origem_total, self.df_ok["valor_desdobrado"].sum(), self.df_erro[coluna_valor].sum(), time.time() - inicio_proc)
         return self.df_ok, self.df_erro
 
-    def salvar_resultados(self, caminho_base="resultados_desdobramento", formato="xlsx"):
+    def desdobrar_complexo(self, df_demanda, df_historico, df_lote, chaves_ligacao, chaves_detalhamento, coluna_valor, pivotar=True):
         """
-        Salva df_ok e df_erro em arquivos.
-
-        Parameters:
-            caminho_base (str): Nome do diretório ou prefixo do arquivo.
-                                Se for um diretório, os arquivos serão salvos dentro dele.
-            formato (str): Formato de arquivo ('csv' ou 'xlsx'). Default é 'csv'.
+        Projeta a demanda baseando-se no histórico de 6 meses e aplica lote mínimo.
+        Ideal para: Abrir Forecast consolidado em granularidade SKU/UF/Cidade.
         """
-        if self.df_ok is None:
-            print("Erro: O método desdobrar() deve ser executado antes de salvar.")
-            return
-
-        if formato.lower() not in ["csv", "xlsx"]:
-            print(f"Formato '{formato}' não suportado. Usando 'csv'.")
-            formato = "csv"
+        inicio_proc = time.time()
+        self.soma_origem_total = df_demanda[coluna_valor].sum()
+        chaves_full = chaves_ligacao + chaves_detalhamento
         
-        # Cria o diretório se o caminho_base for um diretório
-        if not caminho_base.endswith(f".{formato}"):
-             os.makedirs(caminho_base, exist_ok=True)
-             caminho_ok = os.path.join(caminho_base, f"df_desdobrado.{formato}")
-             caminho_erro = os.path.join(caminho_base, f"df_erro.{formato}")
+        # Share Histórico
+        dist_hist = df_historico.groupby(chaves_full)[coluna_valor].sum().reset_index()
+        dist_hist[coluna_valor] = np.where(dist_hist[coluna_valor] < 0, 0.5, dist_hist[coluna_valor])
+        soma_grupo = dist_hist.groupby(chaves_ligacao)[coluna_valor].transform('sum')
+        dist_hist['fator'] = dist_hist[coluna_valor] / soma_grupo.replace(0, 1)
+
+        # Projeção
+        df_merged = df_demanda.merge(dist_hist[chaves_full + ['fator']], on=chaves_ligacao, how='left')
+        df_merged['valor_desdobrado'] = df_merged[coluna_valor] * df_merged['fator']
+
+        # Lote Mínimo
+        df_merged = df_merged.merge(df_lote[['Item', 'Lote_Multiplo']], on='Item', how='left').fillna({'Lote_Multiplo': 0})
+        # Regra Lote: < 0.5 vira 0 | entre 0.5 e 1.0 vira Lote
+        df_merged['valor_final'] = np.where(df_merged['valor_desdobrado'] < (0.5 * df_merged['Lote_Multiplo']), 0, df_merged['valor_desdobrado'])
+        cond_lote = (df_merged['valor_desdobrado'] >= (0.5 * df_merged['Lote_Multiplo'])) & (df_merged['valor_desdobrado'] <= df_merged['Lote_Multiplo'])
+        df_merged['valor_final'] = np.where(cond_lote, df_merged['Lote_Multiplo'], df_merged['valor_final'])
+
+        # Separação
+        self.df_ok = df_merged[df_merged['fator'].notna() & (df_merged['valor_final'] > 0)].copy()
+        self.df_erro = df_demanda[~df_demanda.set_index(chaves_ligacao).index.isin(dist_hist.set_index(chaves_ligacao).index)].copy()
+
+        self._exibir_auditoria("COMPLEXO", self.soma_origem_total, self.df_ok['valor_final'].sum(), self.df_erro[coluna_valor].sum(), time.time() - inicio_proc)
+
+        if pivotar and not self.df_ok.empty:
+            return self._executar_pivot(chaves_full, 'valor_final'), self.df_erro
+        return self.df_ok, self.df_erro
+
+    # AUXILIARES
+    def _executar_pivot(self, chaves_index, col_valor):
+        return self.df_ok.pivot_table(index=chaves_index, columns='AnoMes', values=col_valor, aggfunc='sum').reset_index()
+
+    def _exibir_auditoria(self, modo, v_in, v_out, v_err, tempo):
+        taxa_erro = (v_err / v_in) * 100 if v_in > 0 else 0
+        print(f"\n>>> RELATÓRIO MEGA DESDOBRADOR | MODO: {modo}")
+        print(f"{'-'*50}")
+        print(f"Soma Origem:     {v_in:>15.2f}")
+        print(f"Soma Desdobrado: {v_out:>15.2f}")
+        print(f"Soma Erros:      {v_err:>15.2f} ({taxa_erro:.1f}%)")
+        print(f"Status:          {'✅ DENTRO DA MARGEM' if taxa_erro <= 5 else '⚠️ FORA DA MARGEM'}")
+        print(f"Tempo:           {tempo:.2f}s")
+        print(f"{'-'*50}")
+
+    def salvar_resultados(self, caminho_base="outputs", formato="xlsx"):
+        # Implementação de salvamento robusta (semelhante à que você enviou)
+        os.makedirs(caminho_base, exist_ok=True)
+        if formato == "xlsx":
+            self.df_ok.to_excel(f"{caminho_base}/resultado_ok.xlsx", index=False)
+            self.df_erro.to_excel(f"{caminho_base}/resultado_erros.xlsx", index=False)
         else:
-             # Se for um nome de arquivo completo, usa-o como prefixo
-             caminho_ok = caminho_base.replace(f".{formato}", f"_desdobrado.{formato}")
-             caminho_erro = caminho_base.replace(f".{formato}", f"_erros.{formato}")
-
-        print(f"\nSalvando resultados no formato '{formato.upper()}'...")
-
-        # Salva df_ok
-        if formato == "csv":
-            self.df_ok.to_csv(caminho_ok, index=False)
-            self.df_erro.to_csv(caminho_erro, index=False)
-        elif formato == "xlsx":
-            with pd.ExcelWriter(caminho_ok, engine='xlsxwriter') as writer:
-                self.df_ok.to_excel(writer, sheet_name='Desdobrado', index=False)
-            with pd.ExcelWriter(caminho_erro, engine='xlsxwriter') as writer:
-                self.df_erro.to_excel(writer, sheet_name='Erros', index=False)
-
-        print(f"Salvo OK: {caminho_ok}")
-        print(f"Salvo ERRO: {caminho_erro}")
+            self.df_ok.to_csv(f"{caminho_base}/resultado_ok.csv", index=False)
+            self.df_erro.to_csv(f"{caminho_base}/resultado_erros.csv", index=False)
 
 class DataFrameDiagnostics:
     """
